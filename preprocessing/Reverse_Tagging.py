@@ -1,5 +1,6 @@
 import codecs
 import os
+import re
 
 
 def str_q2b(ustring):
@@ -18,6 +19,7 @@ def str_q2b(ustring):
 
 def get_content_list_from_file(file_path):
     # file_path = os.path.join(data_home_path, doc_id+'.html')
+    # TODO: 应该直接读成一个大的字符串？？？？？？
     with codecs.open(file_path, 'r', 'utf-8') as f:
         content = f.readlines()
     # remove \n
@@ -32,7 +34,10 @@ class PreProcessor:
         self.content = content
 
     def normalize_numbers(self, str_line):
-        #
+        str_pattern = r'^(-)?\d{1,3}(,\d{3})*(.\d+)?$'  # match 千分位
+        pattern = re.compile(str_pattern)
+        # TODO: start here !??????????
+        results = pattern.findall()
         return ''
 
     def normalize_dates(self, str_line):
