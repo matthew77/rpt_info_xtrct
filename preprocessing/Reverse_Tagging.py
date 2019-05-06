@@ -17,13 +17,58 @@ def str_q2b(ustring):
     return rs_tring
 
 
+def get_file_content_as_string(file_path):
+    str_content = ''
+    with codecs.open(file_path, 'r', 'utf-8') as f:
+        for line in f:
+            str_content = str_content + line.strip().rstrip()
+    return str_content.lstrip()
+
+
 def get_content_list_from_file(file_path):
     # file_path = os.path.join(data_home_path, doc_id+'.html')
-    # TODO: 应该直接读成一个大的字符串？？？？？？
     with codecs.open(file_path, 'r', 'utf-8') as f:
         content = f.readlines()
     # remove \n
-    return [x.strip().rsplit() for x in content]
+    return [x.strip().rstrip() for x in content]
+
+
+test_str = '2011 年 1 月 1 日至 2013 年 12 月 3 1 日     建发集团未减持法拉电子股份。加计本次减持， 建发集团累计减持法拉电子 11,752,826 股，占法拉电子股份总数的 5. 22%'
+
+
+def normalize_number_thousand_separator(num):
+    # e.g. 11,752,826.23万
+    # str1 = 11
+    str1 = num.group(1)
+    # str2 = ,752,826
+    str2 = num.group(2)
+    str2 = str2.replace(',', '')
+    normal_number = int(str1+str2)
+    # str3 = .23
+    if num.group(3):
+        str3 = num.group(3)
+        decimal_part = int(str3[1:])
+        decimal_length = len(str3) - 1
+        decimal_number = float(decimal_part/(10**decimal_length))
+        normal_number = normal_number + decimal_number
+    # str4 = 万
+    if num.group(4):
+        str4 = num.group(4)
+        multiple = convert_chinese_number(str4)
+        normal_number = normal_number * multiple
+    # return a string number with 2 decimal points
+    return "{:.2f}".format(normal_number)
+
+
+def convert_chinese_number(x):
+    return {
+        '万':    10**4,
+        '十万':   10**5,
+        '百万':   10**6,
+        '千万':   10**7,
+        '亿':    10**8,
+        '十亿':   10**9,
+    }.get(x, 1)
 
 
 class PreProcessor:
@@ -34,17 +79,24 @@ class PreProcessor:
         self.content = content
 
     def normalize_numbers(self, str_line):
-        str_pattern = r'^(-)?\d{1,3}(,\d{3})*(.\d+)?$'  # match 千分位
+        # (?:...) A non-capturing version of regular parentheses
+        str_pattern = r'(\d{1,3})((?:,\d{3})+)(.\d+)?(万|十万|百万|千万|亿|十亿)?'  # match 千分位
         pattern = re.compile(str_pattern)
         # TODO: start here !??????????
         results = pattern.findall()
+
+        # TODO: 替换 <正常数字> (万|十万|百万|千万|亿|十亿) 的情况
+
         return ''
 
     def normalize_dates(self, str_line):
         return ''
 
-    def normalize_punctuations(self, str_line):
-        return str_q2b(str_line)
+    def normalize_punctuations(self, str_line, remove_space=True):
+        tmp_str = str_q2b(str_line)
+        if remove_space:
+            tmp_str = tmp_str.replace(' ', '')
+        return tmp_str
 
     def pre_process(self):
         converted_content = []
