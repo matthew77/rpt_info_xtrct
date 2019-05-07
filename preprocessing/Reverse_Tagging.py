@@ -22,6 +22,7 @@ def get_file_content_as_string(file_path):
     with codecs.open(file_path, 'r', 'utf-8') as f:
         for line in f:
             str_content = str_content + line.strip().rstrip()
+
     return str_content.lstrip()
 
 
@@ -34,26 +35,45 @@ def get_content_list_from_file(file_path):
 
 
 test_str = '2011 年 1 月 1 日至 2013 年 12 月 3 1 日     建发集团未减持法拉电子股份。加计本次减持， 建发集团累计减持法拉电子 11,752,826 股，占法拉电子股份总数的 5. 22%'
+test_str = test_str + ' 测试这个 11,752.5 万 股。 测试这个 10826.33万股'
 
 
-def normalize_number_thousand_separator(num):
+def replace_number_with_thousand_separator(num):
+    return normalize_number(num)
+
+
+def replace_number_without_thousand_separator(num):
+    return normalize_number(num, has_thousand_separator=False)
+
+
+def normalize_number(num, has_thousand_separator=True):
+    pos = 1
     # e.g. 11,752,826.23万
     # str1 = 11
-    str1 = num.group(1)
-    # str2 = ,752,826
-    str2 = num.group(2)
-    str2 = str2.replace(',', '')
+    str1 = num.group(pos)
+    # str2 = ,752,826 千分位部分
+    if has_thousand_separator:
+        pos = pos + 1       # pos = 2
+        str2 = num.group(pos)
+        str2 = str2.replace(',', '')
+    else:
+        # for number without thousand separator, there will be no group.
+        # pos = 1
+        str2 = ''
     normal_number = int(str1+str2)
-    # str3 = .23
-    if num.group(3):
-        str3 = num.group(3)
+
+    # str3 = .23  小数部分
+    pos = pos + 1
+    if num.group(pos):
+        str3 = num.group(pos)
         decimal_part = int(str3[1:])
         decimal_length = len(str3) - 1
         decimal_number = float(decimal_part/(10**decimal_length))
         normal_number = normal_number + decimal_number
-    # str4 = 万
-    if num.group(4):
-        str4 = num.group(4)
+    # str4 = 万 单位部分
+    pos = pos + 1
+    if num.group(pos):
+        str4 = num.group(pos)
         multiple = convert_chinese_number(str4)
         normal_number = normal_number * multiple
     # return a string number with 2 decimal points
@@ -79,15 +99,17 @@ class PreProcessor:
         self.content = content
 
     def normalize_numbers(self, str_line):
+        # 替换千分位格式
         # (?:...) A non-capturing version of regular parentheses
-        str_pattern = r'(\d{1,3})((?:,\d{3})+)(.\d+)?(万|十万|百万|千万|亿|十亿)?'  # match 千分位
+        str_pattern = r'[^,\.0-9](\d{1,3})((?:,\d{3})+)(\.\d+)?(万|十万|百万|千万|亿|十亿)?'  # match 千分位
         pattern = re.compile(str_pattern)
-        # TODO: start here !??????????
-        results = pattern.findall()
+        modified_str = pattern.sub(replace_number_with_thousand_separator, str_line)
+        # 替换 <正常数字> (万|十万|百万|千万|亿|十亿) 的情况 e.g 123456百万
+        str_pattern = r'[^,\.](\d+)(\.\d+)?(万|十万|百万|千万|亿|十亿)'
+        pattern = re.compile(str_pattern)
+        modified_str = pattern.sub(replace_number_without_thousand_separator, modified_str)
 
-        # TODO: 替换 <正常数字> (万|十万|百万|千万|亿|十亿) 的情况
-
-        return ''
+        return modified_str
 
     def normalize_dates(self, str_line):
         return ''
