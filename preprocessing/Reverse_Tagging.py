@@ -35,18 +35,18 @@ def get_content_list_from_file(file_path):
 
 
 test_str = '2011 年 1 月 1 日至 2013 年 12 月 3 1 日     建发集团未减持法拉电子股份。加计本次减持， 建发集团累计减持法拉电子 11,752,826 股，占法拉电子股份总数的 5. 22%'
-test_str = test_str + ' 测试这个 11,752.5 万 股。 测试这个 10826.33万股'
+test_str = test_str + ' 测试这个 11,752.5 万 股。 测试这个 10826.33万股 ｎｉｈａｏ，ｋｅｙｉｍａ？？？！！！'
 
 
-def replace_number_with_thousand_separator(num):
-    return normalize_number(num)
+def normalize_number_with_thousand_separator(num):
+    return convert_number_str(num)
 
 
-def replace_number_without_thousand_separator(num):
-    return normalize_number(num, has_thousand_separator=False)
+def normalize_number_without_thousand_separator(num):
+    return convert_number_str(num, has_thousand_separator=False)
 
 
-def normalize_number(num, has_thousand_separator=True):
+def convert_number_str(num, has_thousand_separator=True):
     pos = 1
     # e.g. 11,752,826.23万
     # str1 = 11
@@ -80,6 +80,14 @@ def normalize_number(num, has_thousand_separator=True):
     return "{:.2f}".format(normal_number)
 
 
+def convert_date_str(year_month_date):
+    date_list = list()
+    date_list.append(year_month_date.group(1))
+    date_list.append(year_month_date.group(2).zfill(2))
+    date_list.append(year_month_date.group(3).zfill(2))
+    return '-'.join(date_list)
+
+
 def convert_chinese_number(x):
     return {
         '万':    10**4,
@@ -103,16 +111,19 @@ class PreProcessor:
         # (?:...) A non-capturing version of regular parentheses
         str_pattern = r'[^,\.0-9](\d{1,3})((?:,\d{3})+)(\.\d+)?(万|十万|百万|千万|亿|十亿)?'  # match 千分位
         pattern = re.compile(str_pattern)
-        modified_str = pattern.sub(replace_number_with_thousand_separator, str_line)
+        modified_str = pattern.sub(normalize_number_with_thousand_separator, str_line)
         # 替换 <正常数字> (万|十万|百万|千万|亿|十亿) 的情况 e.g 123456百万
         str_pattern = r'[^,\.](\d+)(\.\d+)?(万|十万|百万|千万|亿|十亿)'
         pattern = re.compile(str_pattern)
-        modified_str = pattern.sub(replace_number_without_thousand_separator, modified_str)
-
+        modified_str = pattern.sub(normalize_number_without_thousand_separator, modified_str)
         return modified_str
 
     def normalize_dates(self, str_line):
-        return ''
+        # Noted: the pattern yyyymmdd is not taken into account
+        str_pattern = r'(\d{4})[\.\-/年\s](\d{1,2})[\.\-/月\s](\d{1,2})[\D]'
+        pattern = re.compile(str_pattern)
+        modified_str = pattern.sub(convert_date_str, str_line)
+        return modified_str
 
     def normalize_punctuations(self, str_line, remove_space=True):
         tmp_str = str_q2b(str_line)
@@ -121,14 +132,10 @@ class PreProcessor:
         return tmp_str
 
     def pre_process(self):
-        converted_content = []
-        for line in self.content:
-            tmp_line = None
-            tmp_line = self.normalize_punctuations(line)
-            tmp_line = self.normalize_dates(tmp_line)
-            tmp_line = self.normalize_numbers(tmp_line)
-            converted_content.append(tmp_line)
-        return converted_content
+        tmp_line = self.normalize_punctuations(self.content)
+        tmp_line = self.normalize_dates(tmp_line)
+        tmp_line = self.normalize_numbers(tmp_line)
+        return tmp_line
 
 
 data_source_zjc = 'C:\\project\\AI\\project_info_extract\\data\\FDDC_announcements_round1_train_data\\增减持\\html'
