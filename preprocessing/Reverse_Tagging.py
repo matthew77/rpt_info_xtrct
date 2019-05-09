@@ -139,15 +139,49 @@ class PreProcessor:
 
 
 data_source_zjc = 'C:\\project\\AI\\project_info_extract\\data\\FDDC_announcements_round1_train_data\\增减持\\html'
+# training_reference_results_file = 'C:\\project\\AI\\project_info_extract\\data\\' \
+#                                   '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
+
+# for testing purpose only
+training_reference_results_file = ''
+move_processed_to_folder = ''
 
 
-def batch_pre_process(data_home_path):
-    for id_html in os.listdir(data_home_path):
-        file_path = os.path.join(data_home_path, id_html)
-        print(file_path)
-        content = get_content_list_from_file(file_path)
-        pre_processor = PreProcessor(content)
-        pre_processor.pre_process()
+class ReverseTagging:
+    def __init__(self, doc_id, raw_content, value_to_be_tagged):
+        self.doc_id = doc_id
+        self.raw_content = raw_content
+        self.value_to_be_tagged = value_to_be_tagged
+
+    def process(self):
+        # return 2 list. the first list contains the content itself
+        # the second list contains the tag
+        pass
+
+
+def process_reverse_tagging(results_file_path, move_processed_to):
+    keys = ('id', 'share_holder_full_name', 'share_holder_short_name',
+            'date', 'price', 'shares_changed', 'total_shares_after_change', 'percent_after_change')
+    with codecs.open(results_file_path, 'r', 'utf-8') as f:
+        count = 0
+        for line in f:
+            line = line.replace('\r\n', '')
+            values = line.split('\t')
+            train_results = dict(zip(keys, values))
+            print(train_results)
+
+            count += 1
+            if count > 10:
+                break
+
+
+# def batch_pre_process(data_home_path):
+#     for id_html in os.listdir(data_home_path):
+#         file_path = os.path.join(data_home_path, id_html)
+#         print(file_path)
+#         content = get_content_list_from_file(file_path)
+#         pre_processor = PreProcessor(content)
+#         pre_processor.pre_process()
 
 
 tst_str = 'ｎｉｈａｏ，ｋｅｙｉｍａ？？？！！！'
