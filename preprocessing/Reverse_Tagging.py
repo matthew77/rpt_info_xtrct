@@ -100,11 +100,11 @@ def convert_chinese_number(x):
 
 
 class PreProcessor:
-    def __init__(self, content):
+    def __init__(self, raw_html_content):
         # self.doc_id = doc_id
         # self.data_home_path = data_home_path
         # content is a list. each element in the list maps to a line of the html file
-        self.content = content
+        self.raw_html_content = raw_html_content
 
     def normalize_numbers(self, str_line):
         # 替换千分位格式
@@ -131,8 +131,8 @@ class PreProcessor:
             tmp_str = tmp_str.replace(' ', '')
         return tmp_str
 
-    def pre_process(self):
-        tmp_line = self.normalize_punctuations(self.content)
+    def process(self):
+        tmp_line = self.normalize_punctuations(self.raw_html_content)
         tmp_line = self.normalize_dates(tmp_line)
         tmp_line = self.normalize_numbers(tmp_line)
         return tmp_line
@@ -148,9 +148,9 @@ move_processed_to_folder = ''
 
 
 class ReverseTagging:
-    def __init__(self, doc_id, raw_content, value_to_be_tagged):
+    def __init__(self, doc_id, cleaned_content, value_to_be_tagged):
         self.doc_id = doc_id
-        self.raw_content = raw_content
+        self.cleaned_content = cleaned_content
         self.value_to_be_tagged = value_to_be_tagged
 
     def process(self):
@@ -159,16 +159,40 @@ class ReverseTagging:
         pass
 
 
-def process_reverse_tagging(results_file_path, move_processed_to):
+class ContentTagPair:
+    # python doesn't support overloading
+    def test(self, param1):
+        print(param1)
+    def test(self, param1, param2):
+        print(' '.join([param1, param2]))
+
+def process_reverse_tagging(training_results_file_path, training_data_source_path,
+                            output_path, process_log_file):
     keys = ('id', 'share_holder_full_name', 'share_holder_short_name',
             'date', 'price', 'shares_changed', 'total_shares_after_change', 'percent_after_change')
-    with codecs.open(results_file_path, 'r', 'utf-8') as f:
-        count = 0
-        for line in f:
+    with codecs.open(training_results_file_path, 'r', 'utf-8') as f:
+        count = 1
+        for line in f:  # loop through all training results.
             line = line.replace('\r\n', '')
             values = line.split('\t')
-            train_results = dict(zip(keys, values))
-            print(train_results)
+            train_ref_results = dict(zip(keys, values))
+            # load raw html file
+            raw_html_file_path = os.path.join(training_data_source_path, '.'.join([train_ref_results['id'], 'html']))
+            raw_html_str = get_file_content_as_string(raw_html_file_path)
+            pre_processor = PreProcessor(raw_html_str)
+            # normalized content loaded.
+            normalized_content_str = pre_processor.process()
+
+            # load tagged file if available
+            tag_file_path = os.path.join(output_path, '.'.join([train_ref_results['id'], 'tag']))
+            try:
+                with codecs.open(tag_file_path, 'r', 'utf-8') as f:
+                    # TODO: what's the data structure to be loaded into memory?
+                    pass
+            except FileNotFoundError:
+                # it's the first time to tag this html, so create
+                pass
+
 
             count += 1
             if count > 10:

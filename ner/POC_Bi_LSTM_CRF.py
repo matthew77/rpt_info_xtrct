@@ -10,6 +10,7 @@ STOP_TAG = "<STOP>"
 EMBEDDING_DIM = 5
 HIDDEN_DIM = 4
 
+
 def argmax(vec):
     # return the argmax as a python int
     _, idx = torch.max(vec, 1)
@@ -26,7 +27,7 @@ def log_sum_exp(vec):
     max_score = vec[0, argmax(vec)]
     max_score_broadcast = max_score.view(1, -1).expand(1, vec.size()[1])
     return max_score + \
-        torch.log(torch.sum(torch.exp(vec - max_score_broadcast)))
+           torch.log(torch.sum(torch.exp(vec - max_score_broadcast)))
 
 
 class BiLSTM_CRF(nn.Module):
@@ -107,7 +108,7 @@ class BiLSTM_CRF(nn.Module):
         tags = torch.cat([torch.tensor([self.tag_to_ix[START_TAG]], dtype=torch.long), tags])
         for i, feat in enumerate(feats):
             score = score + \
-                self.transitions[tags[i + 1], tags[i]] + feat[tags[i + 1]]
+                    self.transitions[tags[i + 1], tags[i]] + feat[tags[i + 1]]
         score = score + self.transitions[self.tag_to_ix[STOP_TAG], tags[-1]]
         return score
 
@@ -201,6 +202,9 @@ with torch.no_grad():
 # Make sure prepare_sequence from earlier in the LSTM section is loaded
 for epoch in range(
         300):  # again, normally you would NOT do 300 epochs, it is toy data
+    # ZL: for stochastic gradient descent, the out loop usually
+    # set from 1 to 10. if you have a very large training sample
+    # you may use small number!!!
     for sentence, tags in training_data:
         # Step 1. Remember that Pytorch accumulates gradients.
         # We need to clear them out before each instance
