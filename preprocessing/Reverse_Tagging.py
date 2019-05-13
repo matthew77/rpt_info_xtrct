@@ -95,8 +95,26 @@ def convert_chinese_number(x):
         '百万':   10**6,
         '千万':   10**7,
         '亿':    10**8,
-        '十亿':   10**9,
+        '十亿':   10**9
     }.get(x, 1)
+
+def get_tag_type(x):
+    # 股东全称       B-SHL I-SHL    tag type = SHL
+    # 股东简称       B-SHS I-SHS
+    # 变动截止日期    B-CHD I-CHD
+    # 变动价格       B-PRC I-PRC
+    # 变动数量       B-AMT I-AMT
+    # 变动后持股数    B-CHT I-CHT
+    # 变动后持股比例   B-CPS I-CPS
+    return {
+        'shareholder_long_name':    'SHL',
+        'shareholder_short_name':   'SHS',
+        'change_date':   'CHD',
+        'change_price':   'PRC',
+        'change_amount':    'AMT',
+        'total_after_change':   'CHT',
+        'percent_after_change': 'CPS'
+    }.get(x, '')
 
 
 class PreProcessor:
@@ -160,11 +178,53 @@ class ReverseTagging:
 
 
 class ContentTagPair:
-    # python doesn't support overloading
-    def test(self, param1):
-        print(param1)
-    def test(self, param1, param2):
-        print(' '.join([param1, param2]))
+    def __init__(self, pair_list, html_string, tag_list):
+        self.pair_list = pair_list
+        self.html_string = html_string
+        self.tag_list = tag_list
+
+    @classmethod
+    def load_from_file(cls, tag_file_path):
+        pair_list = list()
+        html_string = list()
+        tag_list = list()
+        with codecs.open(tag_file_path, 'r', 'utf-8') as f:
+            for line in f:
+                tmp_pair = line.split('\t')
+                pair_list.append(tmp_pair)
+                html_string.append(tmp_pair[0])
+                tag_list.append(tmp_pair[1])
+        return cls(pair_list=pair_list, html_string=''.join(html_string), tag_list=tag_list)
+
+    @classmethod
+    def init_from_string(cls, html_str):
+        pair_list = list()
+        tag_list = list()
+        for char in html_str:
+            tmp_pair = list()
+            tmp_pair.append(char)
+            tmp_pair.append('O')  # init tag will all be set to O
+            pair_list.append(tmp_pair)
+            tag_list.append('O')
+        return cls(pair_list=pair_list, html_string=html_str, tag_list=tag_list)
+
+    def tag(self, training_result_str, tag):
+        # training_result_str is from training standard results
+        # tag is a type: e.g. person or number for 增减持, we have following tag type (BIO tags)
+        # 股东全称       B-SHL I-SHL    tag type = SHL
+        # 股东简称       B-SHS I-SHS
+        # 变动截止日期    B-CHD I-CHD
+        # 变动价格       B-PRC I-PRC
+        # 变动数量       B-AMT I-AMT
+        # 变动后持股数    B-CHT I-CHT
+        # 变动后持股比例   B-CPS I-CPS
+
+        pass
+
+    def update(self):
+        # update the self.pair_list whenever self.tag_list is changed
+        pass
+
 
 def process_reverse_tagging(training_results_file_path, training_data_source_path,
                             output_path, process_log_file):
@@ -183,12 +243,13 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
             # normalized content loaded.
             normalized_content_str = pre_processor.process()
 
-            # load tagged file if available
+            # load tagged file if available. Because, a doc id may have multiple records line.
+            # each record line will start a process to tag the content, which means the tagged
+            # file will be updated multiple times.
             tag_file_path = os.path.join(output_path, '.'.join([train_ref_results['id'], 'tag']))
+            tagged_content = ContentTagPair()
             try:
-                with codecs.open(tag_file_path, 'r', 'utf-8') as f:
-                    # TODO: what's the data structure to be loaded into memory?
-                    pass
+                tagged_content.load_from_file(tag_file_path)
             except FileNotFoundError:
                 # it's the first time to tag this html, so create
                 pass
