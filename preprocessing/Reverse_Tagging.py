@@ -107,13 +107,13 @@ def get_tag_type(x):
     # 变动后持股数    B-CHT I-CHT
     # 变动后持股比例   B-CPS I-CPS
     return {
-        'shareholder_long_name':    'SHL',
-        'shareholder_short_name':   'SHS',
-        'change_date':   'CHD',
-        'change_price':   'PRC',
-        'change_amount':    'AMT',
-        'total_after_change':   'CHT',
-        'percent_after_change': 'CPS'
+        'share_holder_full_name':       'SHL',
+        'share_holder_short_name':      'SHS',
+        'date':                         'CHD',
+        'price':                        'PRC',
+        'shares_changed':               'AMT',
+        'total_shares_after_change':   'CHT',
+        'percent_after_change':         'CPS'
     }.get(x, '')
 
 
@@ -163,18 +163,19 @@ data_source_zjc = 'C:\\project\\AI\\project_info_extract\\data\\FDDC_announcemen
 # for testing purpose only
 training_reference_results_file = ''
 move_processed_to_folder = ''
+log_file = ''
 
 
-class ReverseTagging:
-    def __init__(self, doc_id, cleaned_content, value_to_be_tagged):
-        self.doc_id = doc_id
-        self.cleaned_content = cleaned_content
-        self.value_to_be_tagged = value_to_be_tagged
-
-    def process(self):
-        # return 2 list. the first list contains the content itself
-        # the second list contains the tag
-        pass
+# class ReverseTagging:
+#     def __init__(self, doc_id, cleaned_content, value_to_be_tagged):
+#         self.doc_id = doc_id
+#         self.cleaned_content = cleaned_content
+#         self.value_to_be_tagged = value_to_be_tagged
+#
+#     def process(self):
+#         # return 2 list. the first list contains the content itself
+#         # the second list contains the tag
+#         pass
 
 
 class ContentTagPair:
@@ -208,7 +209,7 @@ class ContentTagPair:
             tag_list.append('O')
         return cls(pair_list=pair_list, html_string=html_str, tag_list=tag_list)
 
-    def tag(self, training_result_str, tag):
+    def tag(self, training_result_str, tag_type):
         # training_result_str is from training standard results
         # tag is a type: e.g. person or number for 增减持, we have following tag type (BIO tags)
         # 股东全称       B-SHL I-SHL    tag type = SHL
@@ -218,21 +219,58 @@ class ContentTagPair:
         # 变动数量       B-AMT I-AMT
         # 变动后持股数    B-CHT I-CHT
         # 变动后持股比例   B-CPS I-CPS
+        match = re.finditer(training_result_str, self.html_string)
+        has_match = False
+        for m in match:
+            index_start = m.start()
+            index_end = m.end()
+            self.write_to_tag_list(index_start, index_end, tag_type)
+            has_match = True
+        if not has_match:
+            raise Exception(training_result_str + ' --- does not match anything')
 
-        pass
+    def write_to_tag_list(self, start_pos, end_pos, tag_type):
+        # tag type is the tag without prefix e.g. SHL (B-SHL)
+        for i in range(end_pos-start_pos):
+            if i == 0:
+                self.tag_list[start_pos] = 'B-' + tag_type
+            else:
+                self.tag_list[start_pos+i] = 'I-' + tag_type
 
     def update(self):
-        # update the self.pair_list whenever self.tag_list is changed
-        pass
+        # synchronize the pair_list and tag_list.
+        pos = 0
+        for pair in self.pair_list:
+            pair[1] = self.tag_list[pos]
+            pos += 1
+
+    def save(self, tag_file_path):
+        with codecs.open(tag_file_path, 'w', encoding='utf-8') as f:
+            for pair in self.pair_list:
+                tmp_str = '\t'.join(pair)
+                print(tmp_str, file=f)
+
 
 
 def process_reverse_tagging(training_results_file_path, training_data_source_path,
                             output_path, process_log_file):
+    count = 0
+    if os.path.exists(process_log_file):
+        with open(process_log_file, 'r') as log:
+            last_time_count = int(log.read())
+    else:
+        os.makedirs(os.path.dirname(process_log_file), exist_ok=True)
+        with open(process_log_file, 'w') as log:
+            log.write('0')
+        last_time_count = 0
+
     keys = ('id', 'share_holder_full_name', 'share_holder_short_name',
             'date', 'price', 'shares_changed', 'total_shares_after_change', 'percent_after_change')
     with codecs.open(training_results_file_path, 'r', 'utf-8') as f:
-        count = 1
         for line in f:  # loop through all training results.
+            if last_time_count > count:
+                count += 1
+                continue
             line = line.replace('\r\n', '')
             values = line.split('\t')
             train_ref_results = dict(zip(keys, values))
@@ -247,15 +285,33 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
             # each record line will start a process to tag the content, which means the tagged
             # file will be updated multiple times.
             tag_file_path = os.path.join(output_path, '.'.join([train_ref_results['id'], 'tag']))
-            tagged_content = ContentTagPair()
             try:
-                tagged_content.load_from_file(tag_file_path)
+                tagged_content_pair = ContentTagPair.load_from_file(tag_file_path)
             except FileNotFoundError:
                 # it's the first time to tag this html, so create
-                pass
+                tagged_content_pair = ContentTagPair.init_from_string(normalized_content_str)
 
+            for key in keys:
+                if key == 'id':
+                    continue
+                y_train = train_ref_results.get(key)
+                if y_train:     # not all field contains value.
+                    tag_type = get_tag_type(key)
+                    try:
+                        tagged_content_pair.tag(y_train, tag_type)
+                    except Exception:
+                        error_msg = train_ref_results['id'] + '::: matching ' + key + ' = ' + y_train + ' failed'
+                        raise Exception(error_msg)
+
+            tagged_content_pair.update()
+            # save results.
+            tagged_content_pair.save(tag_file_path)
 
             count += 1
+
+            with open(process_log_file, 'w') as log:
+                log.write(''+count)
+            # for testing only
             if count > 10:
                 break
 
