@@ -8,7 +8,7 @@ def str_q2b(ustring):
     rs_tring = ""
     for uchar in ustring:
         inside_code = ord(uchar)
-        if inside_code == 12288:                            # 全角空格直接转换
+        if inside_code == 12288:                            # 全角空格直接转换 全角句号。不转换
             inside_code = 32
         elif 65281 <= inside_code <= 65374:                 # 全角字符（除空格）根据关系转化
             inside_code -= 65248
@@ -77,7 +77,7 @@ def convert_number_str(num, has_thousand_separator=True):
         multiple = convert_chinese_number(str4)
         normal_number = normal_number * multiple
     # return a string number with 2 decimal points
-    return "{:.2f}".format(normal_number)
+    return "{:.4f}".format(normal_number)
 
 
 def convert_date_str(year_month_date):
@@ -135,6 +135,12 @@ class PreProcessor:
         pattern = re.compile(str_pattern)
         modified_str = pattern.sub(normalize_number_without_thousand_separator, modified_str)
         return modified_str
+
+    def normalize_percent(self):
+        # 将12.22% 转成0.1222
+        str_pattern = r'\D(\d{1,2}\.\d{1,2})%'  # match 千分位
+        pattern = re.compile(str_pattern)
+        # TODO: convert to float
 
     def normalize_dates(self, str_line):
         # Noted: the pattern yyyymmdd is not taken into account
