@@ -34,7 +34,8 @@ def get_content_list_from_file(file_path):
     return [x.strip().rstrip() for x in content]
 
 
-test_str = '2011 年 1 月 1 日至 2013 年 12 月 3 1 日     建发集团未减持法拉电子股份。加计本次减持， 建发集团累计减持法拉电子 11,752,826 股，占法拉电子股份总数的 5. 22%'
+test_str = '2011 年 1 月 1 日至 2013 年 12 月 3 1 日再接一个2013 年 12 月 3     建发集团未减持法拉电子股份。加计本次减持，' \
+           ' 建发集团累计减持法拉电子 11,752,826 股再接一个11,752,826，占法拉电子股份总数的 5. 22%还有33.33%'
 test_str = test_str + ' 测试这个 11,752.5 万 股。 测试这个 10826.33万股 ｎｉｈａｏ，ｋｅｙｉｍａ？？？！！！'
 
 
@@ -46,8 +47,14 @@ def normalize_number_without_thousand_separator(num):
     return convert_number_str(num, has_thousand_separator=False)
 
 
+def convert_percent_to_float_str(per_num):
+    tmp_str = per_num.group(2)
+    tmp_float = float(tmp_str)/100
+    return "{}{:.4f}".format(per_num.group(1), tmp_float)
+
+
 def convert_number_str(num, has_thousand_separator=True):
-    pos = 1
+    pos = 2  # skip the first group, because it's a start sign.
     # e.g. 11,752,826.23万
     # str1 = 11
     str1 = num.group(pos)
@@ -77,7 +84,7 @@ def convert_number_str(num, has_thousand_separator=True):
         multiple = convert_chinese_number(str4)
         normal_number = normal_number * multiple
     # return a string number with 2 decimal points
-    return "{:.4f}".format(normal_number)
+    return "{}{:.4f}".format(num.group(1), normal_number)
 
 
 def convert_date_str(year_month_date):
@@ -127,20 +134,21 @@ class PreProcessor:
     def normalize_numbers(self, str_line):
         # 替换千分位格式
         # (?:...) A non-capturing version of regular parentheses
-        str_pattern = r'[^,\.0-9](\d{1,3})((?:,\d{3})+)(\.\d+)?(万|十万|百万|千万|亿|十亿)?'  # match 千分位
+        str_pattern = r'([^,\.0-9])(\d{1,3})((?:,\d{3})+)(\.\d+)?(万|十万|百万|千万|亿|十亿)?'  # match 千分位
         pattern = re.compile(str_pattern)
         modified_str = pattern.sub(normalize_number_with_thousand_separator, str_line)
         # 替换 <正常数字> (万|十万|百万|千万|亿|十亿) 的情况 e.g 123456百万
-        str_pattern = r'[^,\.](\d+)(\.\d+)?(万|十万|百万|千万|亿|十亿)'
+        str_pattern = r'([^,\.])(\d+)(\.\d+)?(万|十万|百万|千万|亿|十亿)'
         pattern = re.compile(str_pattern)
         modified_str = pattern.sub(normalize_number_without_thousand_separator, modified_str)
         return modified_str
 
-    def normalize_percent(self):
+    def normalize_percent(self, str_line):
         # 将12.22% 转成0.1222
-        str_pattern = r'\D(\d{1,2}\.\d{1,2})%'  # match 千分位
+        str_pattern = r'(\D)(\d{1,2}\.\d{1,2})%'  # match 千分位
         pattern = re.compile(str_pattern)
-        # TODO: convert to float
+        modified_str = pattern.sub(convert_percent_to_float_str, str_line)
+        return modified_str
 
     def normalize_dates(self, str_line):
         # Noted: the pattern yyyymmdd is not taken into account
@@ -159,6 +167,7 @@ class PreProcessor:
         tmp_line = self.normalize_punctuations(self.raw_html_content)
         tmp_line = self.normalize_dates(tmp_line)
         tmp_line = self.normalize_numbers(tmp_line)
+        tmp_line = self.normalize_percent(tmp_line)
         return tmp_line
 
 
@@ -167,9 +176,10 @@ data_source_zjc = 'C:\\project\\AI\\project_info_extract\\data\\FDDC_announcemen
 #                                   '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
 
 # for testing purpose only
-training_reference_results_file = ''
-move_processed_to_folder = ''
-log_file = ''
+training_reference_results_file = 'C:\\project\\AI\\project_info_extract\\data\\' \
+                                  '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
+tag_output_path = 'C:\\project\\AI\\project_info_extract\\data\\output'
+log_file = 'C:\\project\\AI\\project_info_extract\\data\\log'
 
 
 # class ReverseTagging:
@@ -232,6 +242,15 @@ class ContentTagPair:
             index_end = m.end()
             self.write_to_tag_list(index_start, index_end, tag_type)
             has_match = True
+        if not has_match:
+            if tag_type in ['PRC', 'AMT', 'CHT']:
+                str_another_format = "{:.4f}".format(float(training_result_str))
+                match = re.finditer(str_another_format, self.html_string)
+                for m in match:
+                    index_start = m.start()
+                    index_end = m.end()
+                    self.write_to_tag_list(index_start, index_end, tag_type)
+                    has_match = True
         if not has_match:
             raise Exception(training_result_str + ' --- does not match anything')
 
@@ -344,7 +363,7 @@ print(str_q2b(tst_str))
 #         print('*******************************************')
 #
 #
-# if __name__ == '__main__':
-#     pass
+if __name__ == '__main__':
+    process_reverse_tagging(training_reference_results_file, data_source_zjc, tag_output_path, log_file)
 #
 #
