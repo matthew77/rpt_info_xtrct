@@ -179,7 +179,8 @@ data_source_zjc = 'C:\\project\\AI\\project_info_extract\\data\\FDDC_announcemen
 training_reference_results_file = 'C:\\project\\AI\\project_info_extract\\data\\' \
                                   '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
 tag_output_path = 'C:\\project\\AI\\project_info_extract\\data\\output'
-log_file = 'C:\\project\\AI\\project_info_extract\\data\\log'
+process_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\process.log'
+error_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\error.log'
 
 
 # class ReverseTagging:
@@ -235,22 +236,25 @@ class ContentTagPair:
         # 变动数量       B-AMT I-AMT
         # 变动后持股数    B-CHT I-CHT
         # 变动后持股比例   B-CPS I-CPS
-        match = re.finditer(training_result_str, self.html_string)
+
         has_match = False
-        for m in match:
-            index_start = m.start()
-            index_end = m.end()
-            self.write_to_tag_list(index_start, index_end, tag_type)
-            has_match = True
+        if tag_type in ['PRC', 'AMT', 'CHT']:
+            # the value in html usually has been converted.
+            str_another_format = "{:.4f}".format(float(training_result_str))
+            match = re.finditer(str_another_format, self.html_string)
+            for m in match:
+                index_start = m.start()
+                index_end = m.end()
+                self.write_to_tag_list(index_start, index_end, tag_type)
+                has_match = True
         if not has_match:
-            if tag_type in ['PRC', 'AMT', 'CHT']:
-                str_another_format = "{:.4f}".format(float(training_result_str))
-                match = re.finditer(str_another_format, self.html_string)
-                for m in match:
-                    index_start = m.start()
-                    index_end = m.end()
-                    self.write_to_tag_list(index_start, index_end, tag_type)
-                    has_match = True
+            # if the .0000 format doesn't match then, try original
+            match = re.finditer(training_result_str, self.html_string)
+            for m in match:
+                index_start = m.start()
+                index_end = m.end()
+                self.write_to_tag_list(index_start, index_end, tag_type)
+                has_match = True
         if not has_match:
             raise Exception(training_result_str + ' --- does not match anything')
 
@@ -276,16 +280,26 @@ class ContentTagPair:
                 print(tmp_str, file=f)
 
 
+def my_log(log_file_path, msg):
+    print(msg)
+    if os.path.exists(log_file_path):
+        with open(log_file_path, 'a') as log:
+            print(msg, file=log)
+    else:
+        os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+        with open(log_file_path, 'w') as log:
+            print(msg, file=log)
+
 
 def process_reverse_tagging(training_results_file_path, training_data_source_path,
-                            output_path, process_log_file):
+                            output_path, proc_log_file, err_log_file):
     count = 0
-    if os.path.exists(process_log_file):
-        with open(process_log_file, 'r') as log:
+    if os.path.exists(proc_log_file):
+        with open(proc_log_file, 'r') as log:
             last_time_count = int(log.read())
     else:
-        os.makedirs(os.path.dirname(process_log_file), exist_ok=True)
-        with open(process_log_file, 'w') as log:
+        os.makedirs(os.path.dirname(proc_log_file), exist_ok=True)
+        with open(proc_log_file, 'w') as log:
             log.write('0')
         last_time_count = 0
 
@@ -326,7 +340,7 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
                         tagged_content_pair.tag(y_train, tag_type)
                     except Exception:
                         error_msg = train_ref_results['id'] + '::: matching ' + key + ' = ' + y_train + ' failed'
-                        raise Exception(error_msg)
+                        my_log(err_log_file, '\t'.join([train_ref_results['id'], error_msg]))
 
             tagged_content_pair.update()
             # save results.
@@ -334,7 +348,7 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
 
             count += 1
 
-            with open(process_log_file, 'w') as log:
+            with open(proc_log_file, 'w') as log:
                 log.write(''+count)
             # for testing only
             if count > 10:
@@ -364,6 +378,7 @@ print(str_q2b(tst_str))
 #
 #
 if __name__ == '__main__':
-    process_reverse_tagging(training_reference_results_file, data_source_zjc, tag_output_path, log_file)
+    process_reverse_tagging(training_reference_results_file, data_source_zjc,
+                            tag_output_path, process_log_file, error_log_file)
 #
 #
