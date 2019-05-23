@@ -38,6 +38,11 @@ test_str = '2011 年 1 月 1 日至 2013 年 12 月 3 1 日再接一个2013 年 
            ' 建发集团累计减持法拉电子 11,752,826 股再接一个11,752,826，占法拉电子股份总数的 5. 22%还有33.33%'
 test_str = test_str + ' 测试这个 11,752.5 万 股。 测试这个 10826.33万股 ｎｉｈａｏ，ｋｅｙｉｍａ？？？！！！'
 
+def escape_reg_string(str):
+    tmp_str = str.replace('(', '\(')
+    tmp_str = tmp_str.replace(')', '\)')
+    return tmp_str
+
 
 def normalize_number_with_thousand_separator(num):
     return convert_number_str(num)
@@ -171,18 +176,6 @@ class PreProcessor:
         return tmp_line
 
 
-data_source_zjc = 'C:\\project\\AI\\project_info_extract\\data\\FDDC_announcements_round1_train_data\\增减持\\html'
-# training_reference_results_file = 'C:\\project\\AI\\project_info_extract\\data\\' \
-#                                   '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
-
-# for testing purpose only
-training_reference_results_file = 'C:\\project\\AI\\project_info_extract\\data\\' \
-                                  '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
-tag_output_path = 'C:\\project\\AI\\project_info_extract\\data\\output'
-process_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\process.log'
-error_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\error.log'
-
-
 # class ReverseTagging:
 #     def __init__(self, doc_id, cleaned_content, value_to_be_tagged):
 #         self.doc_id = doc_id
@@ -208,6 +201,7 @@ class ContentTagPair:
         tag_list = list()
         with codecs.open(tag_file_path, 'r', 'utf-8') as f:
             for line in f:
+                line = line.rstrip()
                 tmp_pair = line.split('\t')
                 pair_list.append(tmp_pair)
                 html_string.append(tmp_pair[0])
@@ -249,7 +243,7 @@ class ContentTagPair:
                 has_match = True
         if not has_match:
             # if the .0000 format doesn't match then, try original
-            match = re.finditer(training_result_str, self.html_string)
+            match = re.finditer(escape_reg_string(training_result_str), self.html_string)
             for m in match:
                 index_start = m.start()
                 index_end = m.end()
@@ -307,6 +301,7 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
             'date', 'price', 'shares_changed', 'total_shares_after_change', 'percent_after_change')
     with codecs.open(training_results_file_path, 'r', 'utf-8') as f:
         for line in f:  # loop through all training results.
+            print('processing line #{0}.......'.format(count+1))
             if last_time_count > count:
                 count += 1
                 continue
@@ -349,10 +344,13 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
             count += 1
 
             with open(proc_log_file, 'w') as log:
-                log.write(''+count)
+                log.write('{0}'.format(count))
+
             # for testing only
-            if count > 10:
-                break
+            #if count > 10:
+            #    break
+
+    print('Done!')
 
 
 # def batch_pre_process(data_home_path):
@@ -377,6 +375,18 @@ print(str_q2b(tst_str))
 #         print('*******************************************')
 #
 #
+data_source_zjc = 'C:\\project\\AI\\project_info_extract\\data\\FDDC_announcements_round1_train_data\\增减持\\html'
+# training_reference_results_file = 'C:\\project\\AI\\project_info_extract\\data\\' \
+#                                   '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
+
+# for testing purpose only
+training_reference_results_file = 'C:\\project\\AI\\project_info_extract\\data\\' \
+                                  '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
+tag_output_path = 'C:\\project\\AI\\project_info_extract\\data\\output'
+process_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\process.log'
+error_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\error.log'
+
+
 if __name__ == '__main__':
     process_reverse_tagging(training_reference_results_file, data_source_zjc,
                             tag_output_path, process_log_file, error_log_file)
