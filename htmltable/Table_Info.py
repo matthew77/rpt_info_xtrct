@@ -3,6 +3,7 @@ import codecs
 import gensim
 import numpy as np
 from scipy.linalg import norm
+import pandas as pd
 
 soup = BeautifulSoup("<html><body><p>data</p></body></html>")
 
@@ -22,12 +23,28 @@ class TableInfoExtractor:
         第8列: 变动后持股比例
         """
         self.html_str = html_str
+        self.dataframes = list()
+        self.parse()
+
+    def parse(self):
+        soup_obj = BeautifulSoup(self.html_str, "html.parser")
+        for table in soup_obj.find_all('table'):
+            data_frame = self.get_dataframe_from_html_table(table)
+            self.dataframes.append(data_frame)
+
+    def is_a_valid_form(self, df):
+        # check the header of the dataframe to see if it contains at least 3??? valid columns
+        pass
 
     def has_valid_form(self):
-        soup_obj = BeautifulSoup(self.html_str)
+        flag = False
+        for df in self.dataframes:
+            if self.is_a_valid_form(df):
+                flag = True
+                break
+        return flag
 
-
-    def get_dataframe_from_html_table(self):
+    def get_dataframe_from_html_table(self, table_obj):
         pass
 
 
