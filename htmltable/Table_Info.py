@@ -70,10 +70,13 @@ class TableInfoExtractor:
         header = list()
         row_number = 1
         num_of_rows_in_head = 1
-        position_stack = dict() # key=column number, value is a 2 value list [rowspan, colspan]
+        position_stack = dict() # key=column number, value is rowspan
+        is_header_processed = False
+        df = None #  dataframe
         for tr in table_obj.find_all('tr'):
             col_number = 1
             tds = iter(tr.find_all('td'))
+            # process the first line of the head.
             if row_number == 1:
                 for td in tds:
                     # for td in tr.find_all('td'):
@@ -87,22 +90,23 @@ class TableInfoExtractor:
                         if td.get('colspan'):
                             row_span = int(td.get('colspan'))
                         # prcessing the head info
-                        td_stack = [1, 1]  # default value
-                        has_span = False
+                        td_rowspan_stack = -1  # default value
+                        # has_span = False
                         if row_span > 1:
                             # header contains multiple lines
                             num_of_rows_in_head = row_span
+                            td_rowspan_stack = row_span - 1  # the current row has been processed. e.g. encounter a td with
+                            # rowspan=2, so after the above process, the rowspan should be 1
+                            position_stack[col_number] = td_rowspan_stack
                         if col_span > 1:
                             for i in range(col_span):
                                 header.append(td.text)
                             row_span -= 1  # the current row is processed
                         else:
                             header.append(td.text)
-                        td_stack[0] = row_span - 1  # the current row has been processed. e.g. encounter a td with
-                                # rowspan=2, so after the above process, the rowspan should be 1
-                        td_stack[1] = col_span
-                        position_stack[col_number] = td_stack
-
+                    col_number += 1
+                        # td_stack[1] = col_span
+            # process the rest tr of the table.
             elif 1 < row_number <= num_of_rows_in_head:
                 # the rest of the header
                 for i in range(len(header)):
@@ -110,18 +114,54 @@ class TableInfoExtractor:
                         # the column still contains rowspan, so now you don't have relative td in this
                         # position, because it's already processed in previous row. so for this td, just
                         # keep the previous value
-                        td_stack = position_stack[i+1]
-                        if td_stack[0] - 1 <= 0:  # the rowspan has finished processing
+                        td_rowspan_stack = position_stack[i+1]
+                        td_rowspan_stack -= 1
+                        if td_rowspan_stack <= 0:  # the rowspan has finished processing
                             del position_stack[i+1]
                     else:
                         # should merge the value with the previous value.
+                        # currently only consider the situation of the header contains 2 lines.
+                        # TODO: maybe the htmls contains the table header with 3 lines.
                         td = next(tds)
                         pre_value = header[i]
                         cur_value = td.text
                         header[i] = pre_value + cur_value
-
-            else:  # process the content/value part of the table.
-                pass
+            # process the dataframe part of the table.
+            else:
+                if not is_header_processed:
+                    is_header_processed = True
+                    # init the data frame
+                    df = pd.DataFrame(columns=header)
+                values = list()
+                # this part will only consider rowspan, since colspan doesn't make sense in the data frame.
+                rec = list()
+                for i in range(len(header)):
+                    if i+1 in position_stack:
+                        # the column still contains rowspan, so now you don't have relative td in this
+                        # position, because it's already processed in previous row. so for this td, just
+                        # copy the previous value
+                        td_rowspan_stack = position_stack[i+1]
+                        td_rowspan_stack -= 1
+                        if td_rowspan_stack <= 0:  # the rowspan has finished processing
+                            del position_stack[i+1]
+                        # copy the previous value in the same column.
+                        pre_value = df.loc[len(df)-2][i]
+                        rec.append(pre_value)
+                    else:
+                        # should merge the value with the previous value.
+                        # currently only consider the situation of the header contains 2 lines.
+                        td = next(tds)
+                        row_span = 1
+                        if td.get('rowspan'):
+                            # for title process, I think rowspan = 2 should be maximum
+                            row_span = int(td.get('rowspan'))
+                        if row_span > 1:
+                            td_rowspan_stack = row_span - 1  # the current row has been processed. e.g. encounter a td with
+                            # rowspan=2, so after the above process, the rowspan should be 1
+                            position_stack[i+1] = td_rowspan_stack
+                        cur_value = td.text
+                        # TODO: convert from string to numbers. also should include the unit such as %, 万 etc
+                        rec.append(cur_value)
 
             row_number += 1
 
