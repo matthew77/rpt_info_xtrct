@@ -6,11 +6,18 @@ from scipy.linalg import norm
 import pandas as pd
 import jieba
 
-soup = BeautifulSoup("<html><body><p>data</p></body></html>")
+# for testing purpose only
+soup = BeautifulSoup("<html><body>"
+                     "<p>data</p>"
+                     "<table>"
+                     "<tr><td rowspan=\"2\">2=</td><td>West Indies</td><td>4</td><td>Lord's</td><td>2009</td></tr>"
+                     "<tr><td>India</td><td>4</td><td>Mumbai</td><td>2012</td></tr>"
+                     "</table>"
+                     "</body></html>")
 
 
 class TableInfoExtractor:
-    def __init__(self, html_str, word_vec_model, similarity_threshold = 0.8):
+    def __init__(self, html_str, word_vec_model, similarity_threshold=0.8):
         """
         公告类型: 股东增减持
         主键: 1-2-4
@@ -55,7 +62,6 @@ class TableInfoExtractor:
             return True, matched_headers
         return False, matched_headers
 
-
     def has_valid_form(self):
         flag = False
         for df in self.dataframes:
@@ -66,13 +72,12 @@ class TableInfoExtractor:
 
     def get_dataframe_from_html_table(self, table_obj):
         # table_obj is a soup table object
-        multi_row_header = False
         header = list()
         row_number = 1
         num_of_rows_in_head = 1
         position_stack = dict() # key=column number, value is rowspan
         is_header_processed = False
-        df = None #  dataframe
+        df = None  # dataframe
         for tr in table_obj.find_all('tr'):
             col_number = 1
             tds = iter(tr.find_all('td'))
@@ -88,7 +93,7 @@ class TableInfoExtractor:
                             # for title process, I think rowspan = 2 should be maximum
                             row_span = int(td.get('rowspan'))
                         if td.get('colspan'):
-                            row_span = int(td.get('colspan'))
+                            col_span = int(td.get('colspan'))
                         # prcessing the head info
                         td_rowspan_stack = -1  # default value
                         # has_span = False
@@ -100,11 +105,11 @@ class TableInfoExtractor:
                             position_stack[col_number] = td_rowspan_stack
                         if col_span > 1:
                             for i in range(col_span):
-                                header.append(td.text)
-                            row_span -= 1  # the current row is processed
+                                header.append(td.text.strip())
+                                col_number += 1
                         else:
-                            header.append(td.text)
-                    col_number += 1
+                            header.append(td.text.strip())
+                            col_number += 1
                         # td_stack[1] = col_span
             # process the rest tr of the table.
             elif 1 < row_number <= num_of_rows_in_head:
@@ -124,7 +129,7 @@ class TableInfoExtractor:
                         # TODO: maybe the htmls contains the table header with 3 lines.
                         td = next(tds)
                         pre_value = header[i]
-                        cur_value = td.text
+                        cur_value = td.text.strip()
                         header[i] = pre_value + cur_value
             # process the dataframe part of the table.
             else:
@@ -132,10 +137,10 @@ class TableInfoExtractor:
                     is_header_processed = True
                     # init the data frame
                     df = pd.DataFrame(columns=header)
-                values = list()
                 # this part will only consider rowspan, since colspan doesn't make sense in the data frame.
                 rec = list()
-                for i in range(len(header)):
+                i = 0
+                while i < len(header):
                     if i+1 in position_stack:
                         # the column still contains rowspan, so now you don't have relative td in this
                         # position, because it's already processed in previous row. so for this td, just
@@ -145,13 +150,13 @@ class TableInfoExtractor:
                         if td_rowspan_stack <= 0:  # the rowspan has finished processing
                             del position_stack[i+1]
                         # copy the previous value in the same column.
-                        pre_value = df.loc[len(df)-2][i]
+                        pre_value = df.loc[len(df)-1][i]
                         rec.append(pre_value)
+                        i += 1
                     else:
-                        # should merge the value with the previous value.
-                        # currently only consider the situation of the header contains 2 lines.
                         td = next(tds)
                         row_span = 1
+                        col_span = 1
                         if td.get('rowspan'):
                             # for title process, I think rowspan = 2 should be maximum
                             row_span = int(td.get('rowspan'))
@@ -159,12 +164,33 @@ class TableInfoExtractor:
                             td_rowspan_stack = row_span - 1  # the current row has been processed. e.g. encounter a td with
                             # rowspan=2, so after the above process, the rowspan should be 1
                             position_stack[i+1] = td_rowspan_stack
-                        cur_value = td.text
-                        # TODO: convert from string to numbers. also should include the unit such as %, 万 etc
-                        rec.append(cur_value)
-
+                        if td.get('colspan'):
+                            col_span = int(td.get('colspan'))
+                        if col_span > 1:
+                            # TODO: convert from string to numbers. also should include the unit such as %, 万 etc
+                            for j in range(col_span):
+                                rec.append(td.text.strip())
+                                i += 1
+                        else:
+                            cur_value = td.text.strip()
+                            rec.append(cur_value)
+                            i += 1
             row_number += 1
+            if is_header_processed:
+                df.loc[len(df)] = rec
 
+        return df
+
+
+# for testing purpose only
+def test_dataframe():
+    test_html = 'C:/project/AI/project_info_extract/data/FDDC_announcements_round1_train_data/增减持/html/11586.html'
+    html_str = ''
+    with codecs.open(test_html, mode='r', encoding='utf-8') as f:
+        for line in f:
+            html_str += line
+    table_processor = TableInfoExtractor(html_str, model)
+    print(table_processor.has_valid_form())
 
 source_word_vec_path = 'C:\\project\\AI\\data\\fasttext.cc.zh.300.vec'
 dest_character_vec_path = 'C:\\project\\AI\\data\\chinese_character_vec_1.txt'
@@ -218,18 +244,18 @@ def get_character_vector(source_path, dest_path):
 # get_character_vector(source_word_vec_path, dest_character_vec_path)
 
 
-strings = [
-    '你在干什么',
-    '你在干啥子',
-    '你在做什么',
-    '你好啊',
-    '我喜欢吃香蕉'
-]
-
-target = '你在干啥'
-
-for str1 in strings:
-    print(str1, get_term_similarity(str1, target, model, is_character_based=False))
+# strings = [
+#     '你在干什么',
+#     '你在干啥子',
+#     '你在做什么',
+#     '你好啊',
+#     '我喜欢吃香蕉'
+# ]
+#
+# target = '你在干啥'
+#
+# for str1 in strings:
+#     print(str1, get_term_similarity(str1, target, model, is_character_based=False))
 
 # fasttext character based testing results:
 # 你在干什么 0.9016322132672677
@@ -244,3 +270,7 @@ for str1 in strings:
 # 你在做什么 0.8558632670866593
 # 你好啊 0.5827293878063351
 # 我喜欢吃香蕉 0.624095035853279
+
+
+if __name__ == '__main__':
+    test_dataframe()
