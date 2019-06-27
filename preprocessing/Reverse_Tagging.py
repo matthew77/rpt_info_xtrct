@@ -136,7 +136,8 @@ class PreProcessor:
         # content is a list. each element in the list maps to a line of the html file
         self.raw_html_content = raw_html_content
 
-    def normalize_numbers(self, str_line):
+    @staticmethod
+    def normalize_numbers(str_line):
         # 替换千分位格式
         # (?:...) A non-capturing version of regular parentheses
         str_pattern = r'([^,\.0-9])(\d{1,3})((?:,\d{3})+)(\.\d+)?(万|十万|百万|千万|亿|十亿)?'  # match 千分位
@@ -148,24 +149,35 @@ class PreProcessor:
         modified_str = pattern.sub(normalize_number_without_thousand_separator, modified_str)
         return modified_str
 
-    def normalize_percent(self, str_line):
+    @staticmethod
+    def normalize_percent(str_line):
         # 将12.22% 转成0.1222
         str_pattern = r'(\D)(\d{1,2}\.\d{1,2})%'  # match 千分位
         pattern = re.compile(str_pattern)
         modified_str = pattern.sub(convert_percent_to_float_str, str_line)
         return modified_str
 
-    def normalize_dates(self, str_line):
+    @staticmethod
+    def normalize_dates(str_line):
         # Noted: the pattern yyyymmdd is not taken into account
         str_pattern = r'(\d{4})[\.\-/年\s](\d{1,2})[\.\-/月\s](\d{1,2})[\D]'
         pattern = re.compile(str_pattern)
         modified_str = pattern.sub(convert_date_str, str_line)
         return modified_str
 
-    def normalize_punctuations(self, str_line, remove_space=True):
+    @staticmethod
+    def remove_space_between_chinese_character(str_line):
+        patten = re.compile(r'([\w\u4e00-\u9fa5]{1})\s+([\u4e00-\u9fa5]{1})')
+        tmp_str = patten.sub(r'\1\2', str_line).strip()
+        patten = re.compile(r'([\u4e00-\u9fa5]{1})\s+([\u4e00-\u9fa5\w]{1})\s+')
+        tmp_str = patten.sub(r'\1\2', tmp_str).strip()
+        return tmp_str
+
+    @staticmethod
+    def normalize_punctuations(str_line):
         tmp_str = str_q2b(str_line)
-        if remove_space:
-            tmp_str = tmp_str.replace(' ', '')
+        # if remove_space:
+        #     tmp_str = tmp_str.replace(' ', '')
         return tmp_str
 
     def process(self):
@@ -312,6 +324,12 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
             raw_html_file_path = os.path.join(training_data_source_path, '.'.join([train_ref_results['id'], 'html']))
             raw_html_str = get_file_content_as_string(raw_html_file_path)
             pre_processor = PreProcessor(raw_html_str)
+            # TODO: separate the HTMLs into 2 group: with table and without table.
+            # TODO: for HTMLs without table, extract the content from html. the out put should not contains any html tags
+            # TODO: for HTMLs with VALID table, suppose all the required data can be found in the table!!! or, the training
+            # TODO: logic can be: extract the content part and try to tag, but leave the table unchanged, since the table
+            # TODO: will be html. only the data in the td cells should be cleaned.
+
             # normalized content loaded.
             normalized_content_str = pre_processor.process()
 
@@ -388,7 +406,9 @@ error_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\error.log'
 
 
 if __name__ == '__main__':
-    process_reverse_tagging(training_reference_results_file, data_source_zjc,
-                            tag_output_path, process_log_file, error_log_file)
-#
-#
+    # process_reverse_tagging(training_reference_results_file, data_source_zjc,
+    #                         tag_output_path, process_log_file, error_log_file)
+
+    original_str = 'a  a 我我我  我我  我   我   sf   ssf我我  我   我   sf我我  我   我   sf我我  我   我   sf'
+    tmp_str = PreProcessor.remove_space_between_chinese_character(original_str)
+    print(tmp_str)
