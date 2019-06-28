@@ -203,6 +203,8 @@ def get_average_vec_for_term(sentence, char_model, is_character_based=True):
     vec = np.zeros(vec_length)
     if is_character_based:
         for char in sentence:
+            if char == ' ':
+                continue
             vec += model[char]
         vec /= len(sentence)
     else:

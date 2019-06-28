@@ -1,6 +1,8 @@
 import codecs
 import os
 import re
+from bs4 import BeautifulSoup
+from htmltable import Table_Info
 
 
 def str_q2b(ustring):
@@ -167,7 +169,7 @@ class PreProcessor:
 
     @staticmethod
     def remove_space_between_chinese_character(str_line):
-        patten = re.compile(r'([\w\u4e00-\u9fa5]{1})\s+([\u4e00-\u9fa5]{1})')
+        patten = re.compile(r'([\w\u4e00-\u9fa5]{1})\s+([\u4e00-\u9fa5()/]{1})')
         tmp_str = patten.sub(r'\1\2', str_line).strip()
         patten = re.compile(r'([\u4e00-\u9fa5]{1})\s+([\u4e00-\u9fa5\w]{1})\s+')
         tmp_str = patten.sub(r'\1\2', tmp_str).strip()
@@ -180,11 +182,32 @@ class PreProcessor:
         #     tmp_str = tmp_str.replace(' ', '')
         return tmp_str
 
-    def process(self):
+    @staticmethod
+    def remove_html_tags(str_line):
+        # from training perspective, html tags should not be included, only the content
+        # itself should be the input. all the text content are within <div type="content">...</div>
+        content_str = ''
+        soup = BeautifulSoup(str_line, "html.parser")
+        # find <div type="content">
+        contents = soup.find_all("div", {"type": "content"})
+        for content in contents:
+            content_children = content.findChildren()
+            for child in content_children:
+                # what I can think of right now is the image tag. so <img> can just be removed.
+                if child.name.lower() == 'img':
+                    child.decompose()
+                else:
+                    # maybe delete all sub tags in <div type="content"> ???
+                    raise Exception(child.name.lower()+' is not expected in <div type="content">')
+            content_str += content.text.strip()
+        return content_str
+
+    def process_common(self):
         tmp_line = self.normalize_punctuations(self.raw_html_content)
         tmp_line = self.normalize_dates(tmp_line)
         tmp_line = self.normalize_numbers(tmp_line)
         tmp_line = self.normalize_percent(tmp_line)
+        tmp_line = self.remove_space_between_chinese_character(tmp_line)
         return tmp_line
 
 
@@ -311,6 +334,7 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
 
     keys = ('id', 'share_holder_full_name', 'share_holder_short_name',
             'date', 'price', 'shares_changed', 'total_shares_after_change', 'percent_after_change')
+
     with codecs.open(training_results_file_path, 'r', 'utf-8') as f:
         for line in f:  # loop through all training results.
             print('processing line #{0}.......'.format(count+1))
@@ -320,6 +344,13 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
             line = line.replace('\r\n', '')
             values = line.split('\t')
             train_ref_results = dict(zip(keys, values))
+
+            out_put_dest_with_table = os.path.join(output_path, 'with_table', '.'.join([train_ref_results['id'], 'html']))
+            if os.path.exists(out_put_dest_with_table):
+                # this html contains tables and no need for tagging
+                count += 1
+                continue
+
             # load raw html file
             raw_html_file_path = os.path.join(training_data_source_path, '.'.join([train_ref_results['id'], 'html']))
             raw_html_str = get_file_content_as_string(raw_html_file_path)
@@ -330,34 +361,44 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
             # TODO: logic can be: extract the content part and try to tag, but leave the table unchanged, since the table
             # TODO: will be html. only the data in the td cells should be cleaned.
 
-            # normalized content loaded.
-            normalized_content_str = pre_processor.process()
+            # normalized html content loaded.
+            # step 1: processing without removing html tags
+            normalized_content_str = pre_processor.process_common()
+            # step 2: check whether the html contains valid tables
+            # step 3: for pure content html, remove html tags and created training files.
+            #         for html with tables, do nothing!!! use regex to fetch the related content.
+            table_processor = Table_Info.TableInfoExtractor(normalized_content_str, Table_Info.model)
+            if table_processor.has_valid_form():
+                # save the preprocessed html, just leave the html to regex
+                with codecs.open(out_put_dest_with_table, mode='w', encoding='utf-8') as f1:
+                    f1.write(normalized_content_str)
+            else:
+                # TODO: remove html tags
+                # load tagged file if available. Because, a doc id may have multiple records line.
+                # each record line will start a process to tag the content, which means the tagged
+                # file will be updated multiple times.
+                tag_file_path = os.path.join(output_path, 'without_table', '.'.join([train_ref_results['id'], 'tag']))
+                try:
+                    tagged_content_pair = ContentTagPair.load_from_file(tag_file_path)
+                except FileNotFoundError:
+                    # it's the first time to tag this html, so create
+                    tagged_content_pair = ContentTagPair.init_from_string(normalized_content_str)
 
-            # load tagged file if available. Because, a doc id may have multiple records line.
-            # each record line will start a process to tag the content, which means the tagged
-            # file will be updated multiple times.
-            tag_file_path = os.path.join(output_path, '.'.join([train_ref_results['id'], 'tag']))
-            try:
-                tagged_content_pair = ContentTagPair.load_from_file(tag_file_path)
-            except FileNotFoundError:
-                # it's the first time to tag this html, so create
-                tagged_content_pair = ContentTagPair.init_from_string(normalized_content_str)
+                for key in keys:
+                    if key == 'id':
+                        continue
+                    y_train = train_ref_results.get(key)
+                    if y_train:     # not all field contains value.
+                        tag_type = get_tag_type(key)
+                        try:
+                            tagged_content_pair.tag(y_train, tag_type)
+                        except Exception:
+                            error_msg = train_ref_results['id'] + '::: matching ' + key + ' = ' + y_train + ' failed'
+                            my_log(err_log_file, '\t'.join([train_ref_results['id'], error_msg]))
 
-            for key in keys:
-                if key == 'id':
-                    continue
-                y_train = train_ref_results.get(key)
-                if y_train:     # not all field contains value.
-                    tag_type = get_tag_type(key)
-                    try:
-                        tagged_content_pair.tag(y_train, tag_type)
-                    except Exception:
-                        error_msg = train_ref_results['id'] + '::: matching ' + key + ' = ' + y_train + ' failed'
-                        my_log(err_log_file, '\t'.join([train_ref_results['id'], error_msg]))
-
-            tagged_content_pair.update()
-            # save results.
-            tagged_content_pair.save(tag_file_path)
+                tagged_content_pair.update()
+                # save results.
+                tagged_content_pair.save(tag_file_path)
 
             count += 1
 
@@ -406,9 +447,18 @@ error_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\error.log'
 
 
 if __name__ == '__main__':
-    # process_reverse_tagging(training_reference_results_file, data_source_zjc,
-    #                         tag_output_path, process_log_file, error_log_file)
+    # file_path = 'C:\\project\\AI\\project_info_extract\\data\\' \
+    #             'FDDC_announcements_round1_train_data\\增减持\\html\\20596892.html'
+    # raw_html_str = get_file_content_as_string(file_path)
+    # proc = PreProcessor(raw_html_str)
+    # tmp_str = proc.process_common()
+    # tmp_str = proc.remove_html_tags(tmp_str)
+    # print(tmp_str)
 
-    original_str = 'a  a 我我我  我我  我   我   sf   ssf我我  我   我   sf我我  我   我   sf我我  我   我   sf'
-    tmp_str = PreProcessor.remove_space_between_chinese_character(original_str)
-    print(tmp_str)
+    process_reverse_tagging(training_reference_results_file, data_source_zjc,
+                            tag_output_path, process_log_file, error_log_file)
+
+    #original_str = 'a  a 我我我  我我  我   我   sf   ssf我我  我   我   sf我我  我   我   sf我我  我   我   sf'
+    # original_str = '<tr><td>增持主体</td><td>增持时间</td><td>增持方式</td><td>增持股数             (股)</td><td>增持均价(元             /股)'
+    # tmp_str = PreProcessor.remove_space_between_chinese_character(original_str)
+    # print(tmp_str)
