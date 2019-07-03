@@ -228,3 +228,6 @@ with torch.no_grad():
     precheck_sent = prepare_sequence(training_data[0][0], word_to_ix)
     print(model(precheck_sent))
 # We got it!
+
+
+# TODO: should use cross validation

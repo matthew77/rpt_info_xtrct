@@ -7,13 +7,13 @@ import pandas as pd
 import jieba
 
 # for testing purpose only
-soup = BeautifulSoup("<html><body>"
-                     "<p>data</p>"
-                     "<table>"
-                     "<tr><td rowspan=\"2\">2=</td><td>West Indies</td><td>4</td><td>Lord's</td><td>2009</td></tr>"
-                     "<tr><td>India</td><td>4</td><td>Mumbai</td><td>2012</td></tr>"
-                     "</table>"
-                     "</body></html>")
+# soup = BeautifulSoup("<html><body>"
+#                      "<p>data</p>"
+#                      "<table>"
+#                      "<tr><td rowspan=\"2\">2=</td><td>West Indies</td><td>4</td><td>Lord's</td><td>2009</td></tr>"
+#                      "<tr><td>India</td><td>4</td><td>Mumbai</td><td>2012</td></tr>"
+#                      "</table>"
+#                      "</body></html>")
 
 
 class TableInfoExtractor:
@@ -35,15 +35,16 @@ class TableInfoExtractor:
         self.similarity_threshold = similarity_threshold
         self.word_vec_model = word_vec_model
         self.dataframes = list()
-        self.parse()
+        # self.parse()  # for testing purpose only: to many errors in the html tables. skip the table processing first.
 
     def parse(self):
         soup_obj = BeautifulSoup(self.html_str, "html.parser")
         for table in soup_obj.find_all('table'):
             data_frame = self.get_dataframe_from_html_table(table)
-            self.dataframes.append(data_frame)
+            if data_frame is not None:
+                self.dataframes.append(data_frame)
 
-    def is_a_valid_form(self, df, is_character_based=True):
+    def is_a_valid_dataframe(self, df, is_character_based=True):
         # check the header of the dataframe to see if it contains at least 3??? valid columns
         # is_character_based=True -- break each of the header term based on character or word(using jieba)
         matched_headers = dict()
@@ -62,7 +63,14 @@ class TableInfoExtractor:
             return True, matched_headers
         return False, matched_headers
 
-    def has_valid_form(self):
+    def has_dataframe(self):
+        # for testing purpose only: to many errors in the html tables. skip the table processing first.
+        soup_obj = BeautifulSoup(self.html_str, "html.parser")
+        if len(soup_obj.find_all('table')) > 0:
+            return True
+        return False
+
+    def has_valid_dataframe(self):
         flag = False
         for df in self.dataframes:
             if self.is_a_valid_form(df):
@@ -83,6 +91,10 @@ class TableInfoExtractor:
             tds = iter(tr.find_all('td'))
             # process the first line of the head.
             if row_number == 1:
+                if len(tr.find_all('td')) == 1:
+                    # the first line of the table only contains 1 column, which is more like a title or banner
+                    # instead of a header. it doesn't contain any valid information, so just ignore it.
+                    continue
                 for td in tds:
                     # for td in tr.find_all('td'):
                     row_span = 1
@@ -133,6 +145,7 @@ class TableInfoExtractor:
                         header[i] = pre_value + cur_value
             # process the dataframe part of the table.
             else:
+                # TODO: process the situation where table has pagination (broken into 2 pages)
                 if not is_header_processed:
                     is_header_processed = True
                     # init the data frame
@@ -184,7 +197,8 @@ class TableInfoExtractor:
 
 # for testing purpose only
 def test_dataframe():
-    test_html = 'C:/project/AI/project_info_extract/data/FDDC_announcements_round1_train_data/增减持/html/11586.html'
+    # test_html = 'C:/project/AI/project_info_extract/data/FDDC_announcements_round1_train_data/增减持/html/11586.html'
+    test_html = 'C:/project/AI/project_info_extract/data/FDDC_announcements_round1_train_data/增减持/html/20536430.html'
     html_str = ''
     with codecs.open(test_html, mode='r', encoding='utf-8') as f:
         for line in f:
@@ -274,5 +288,5 @@ def get_character_vector(source_path, dest_path):
 # 我喜欢吃香蕉 0.624095035853279
 
 
-if __name__ == '__main__':
-    test_dataframe()
+# if __name__ == '__main__':
+#     test_dataframe()
