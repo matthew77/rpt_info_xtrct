@@ -248,24 +248,24 @@ class PreProcessor:
 
 
 class ContentTagPair:
-    def __init__(self, pair_list, html_string, tag_list):
+    def __init__(self, pair_list, content_string, tag_list):
         self.pair_list = pair_list
-        self.html_string = html_string
+        self.content_string = content_string
         self.tag_list = tag_list
 
     @classmethod
     def load_from_file(cls, tag_file_path):
         pair_list = list()
-        html_string = list()
+        content_string = list()
         tag_list = list()
         with codecs.open(tag_file_path, 'r', 'utf-8') as f:
             for line in f:
                 line = line.rstrip()
                 tmp_pair = line.split('\t')
                 pair_list.append(tmp_pair)
-                html_string.append(tmp_pair[0])
+                content_string.append(tmp_pair[0])
                 tag_list.append(tmp_pair[1])
-        return cls(pair_list=pair_list, html_string=''.join(html_string), tag_list=tag_list)
+        return cls(pair_list=pair_list, content_string=''.join(content_string), tag_list=tag_list)
 
     @classmethod
     def init_from_string(cls, html_str):
@@ -277,7 +277,7 @@ class ContentTagPair:
             tmp_pair.append('O')  # init tag will all be set to O
             pair_list.append(tmp_pair)
             tag_list.append('O')
-        return cls(pair_list=pair_list, html_string=html_str, tag_list=tag_list)
+        return cls(pair_list=pair_list, content_string=html_str, tag_list=tag_list)
 
     def tag(self, training_result_str, tag_type):
         # training_result_str is from training standard results
@@ -294,7 +294,7 @@ class ContentTagPair:
         if tag_type == 'SHS':
             # long name: 重庆小康控股有限公司, short name: 小康控股. so the short name may
             # partially overwrite the long name
-            match = re.finditer(escape_reg_string(training_result_str), self.html_string)
+            match = re.finditer(escape_reg_string(training_result_str), self.content_string)
             for m in match:
                 index_start = m.start()
                 index_end = m.end()
@@ -304,7 +304,7 @@ class ContentTagPair:
         if not has_match and tag_type in ['PRC', 'AMT', 'CHT']:
             # the value in html usually has been converted.
             str_another_format = "{:.4f}".format(float(training_result_str))
-            match = re.finditer(str_another_format, self.html_string)
+            match = re.finditer(str_another_format, self.content_string)
             for m in match:
                 index_start = m.start()
                 index_end = m.end()
@@ -313,7 +313,7 @@ class ContentTagPair:
 
         if not has_match:
             # if the .0000 format doesn't match then, try original
-            match = re.finditer(escape_reg_string(training_result_str), self.html_string)
+            match = re.finditer(escape_reg_string(training_result_str), self.content_string)
             for m in match:
                 index_start = m.start()
                 index_end = m.end()
@@ -459,10 +459,37 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
 
 raw_tag_source_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\content_without_html_tag'
 
-def generate_training_set(source_path):
-    for tag_file in os.listdir(source_path):
-        file_path = os.path.join(source_path, tag_file)
 
+def generate_training_set(source_path, dest_path):
+    for tag_file in os.listdir(source_path):
+        in_file_path = os.path.join(source_path, tag_file)
+        out_file_path = os.path.join(dest_path, tag_file)
+        tagged_content_pair = ContentTagPair.load_from_file(in_file_path)
+        sentence_list = tagged_content_pair.content_string.split('。')  # separate by chinese full stop sign
+        start_pos = 0
+        has_valid_tag = False
+        with codecs.open(out_file_path, mode='w', encoding='utf-8') as f:
+            for line in sentence_list:
+                # Important: 在标注的时候注意实体间的关系，主键需要在统一句话中才标注，
+                # 其他属性与部分主键同时出现才标注，这样可以控制标注数据集的假阳性。
+                line_length = len(line)
+                end_pos = start_pos + line_length
+                tag_line = tagged_content_pair.tag_list[start_pos:end_pos]
+                # 股东全称       B-SHL I-SHL   ---key
+                # 股东简称       B-SHS I-SHS   ---key 股东全称, 股东简称 二选一
+                # 变动截止日期    B-CHD I-CHD   ---key
+                # 变动价格       B-PRC I-PRC
+                # 变动数量       B-AMT I-AMT
+                # 变动后持股数    B-CHT I-CHT
+                # 变动后持股比例   B-CPS I-CPS
+                if tag_line.find('B-SHL') != -1 or tag_line.find('B-SHS') != -1:
+                    if tag_line.find('B-CHD') != -1:
+                        # this line contains all the keys, and it should be included in the training set.
+                        # because '。' doesn't take into account, so the end_pos should increase by 1.
+                        pair_list = tagged_content_pair.pair_list[start_pos:end_pos + 1]
+                        # TODO: write content.
+
+                start_pos += line_length + 1  # because '。' doesn't take into account.
 
 
 # def batch_pre_process(data_home_path):
