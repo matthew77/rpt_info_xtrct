@@ -435,6 +435,9 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
                 if key == 'id':
                     continue
                 y_train = train_ref_results.get(key)
+                if y_train == '0':
+                    # some field will contains '0' as the value which doestn't make any sense.
+                    y_train = None
                 if y_train:     # not all field contains value.
                     tag_type = get_tag_type(key)
                     try:
@@ -457,23 +460,79 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
             #    break
     print('Done!')
 
+
 raw_tag_source_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\content_without_html_tag'
+# raw_tag_source_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\test'
+training_set_output_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\training_set'
 
 
-def generate_training_set(source_path, dest_path):
+def generate_training_set_dense(source_path, dest_path):
     for tag_file in os.listdir(source_path):
+        print('processing ' + tag_file + '...')
         in_file_path = os.path.join(source_path, tag_file)
         out_file_path = os.path.join(dest_path, tag_file)
         tagged_content_pair = ContentTagPair.load_from_file(in_file_path)
         sentence_list = tagged_content_pair.content_string.split('。')  # separate by chinese full stop sign
         start_pos = 0
-        has_valid_tag = False
-        with codecs.open(out_file_path, mode='w', encoding='utf-8') as f:
+
+        for line in sentence_list:
+            has_valid_tag = False
+            # Important: 在标注的时候注意实体间的关系，主键需要在统一句话中才标注，
+            # 其他属性与部分主键同时出现才标注，这样可以控制标注数据集的假阳性。
+            line_length = len(line)
+            if line_length == 0:
+                continue
+            end_pos = start_pos + line_length + 1 # to include '。'
+            tag_line = tagged_content_pair.tag_list[start_pos:end_pos]
+            # 股东全称       B-SHL I-SHL   ---key
+            # 股东简称       B-SHS I-SHS   ---key 股东全称, 股东简称 二选一
+            # 变动截止日期    B-CHD I-CHD   ---key
+            # 变动价格       B-PRC I-PRC
+            # 变动数量       B-AMT I-AMT
+            # 变动后持股数    B-CHT I-CHT
+            # 变动后持股比例   B-CPS I-CPS
+            if 'B-SHL' in tag_line or 'B-SHS' in tag_line:
+                if 'B-CHD' in tag_line:
+                    # scenario 1: this line contains all the keys, and it should be included in the training set.
+                    # because '。' doesn't take into account, so the end_pos should increase by 1.
+                    has_valid_tag = True
+            elif 'B-SHL' in tag_line\
+                    or 'B-SHS' in tag_line\
+                    or 'B-CHD' in tag_line:
+                if 'B-PRC' in tag_line \
+                        or 'B-AMT' in tag_line \
+                        or 'B-CHT' in tag_line \
+                        or 'B-CPS' in tag_line:
+                    # scenario 2: this line part of the keys as well as other attributes
+                    has_valid_tag = True
+            if has_valid_tag:
+                with codecs.open(out_file_path, mode='a+', encoding='utf-8') as f:
+                    pair_list = tagged_content_pair.pair_list[start_pos:end_pos]
+                    for pair in pair_list:
+                        tmp_str = '\t'.join(pair)
+                        print(tmp_str, file=f)
+            start_pos = end_pos
+
+
+def generate_training_set_sparse(source_path, dest_path):
+    # to keep all 'O' sentences
+    # TODO: test this part
+    for tag_file in os.listdir(source_path):
+        print('processing ' + tag_file + '...')
+        in_file_path = os.path.join(source_path, tag_file)
+        out_file_path = os.path.join(dest_path, tag_file)
+        tagged_content_pair = ContentTagPair.load_from_file(in_file_path)
+        sentence_list = tagged_content_pair.content_string.split('。')  # separate by chinese full stop sign
+        start_pos = 0
+        with codecs.open(out_file_path, mode='a+', encoding='utf-8') as f:
             for line in sentence_list:
+                has_valid_tag = False
                 # Important: 在标注的时候注意实体间的关系，主键需要在统一句话中才标注，
                 # 其他属性与部分主键同时出现才标注，这样可以控制标注数据集的假阳性。
                 line_length = len(line)
-                end_pos = start_pos + line_length
+                if line_length == 0:
+                    continue
+                end_pos = start_pos + line_length + 1 # to include '。'
                 tag_line = tagged_content_pair.tag_list[start_pos:end_pos]
                 # 股东全称       B-SHL I-SHL   ---key
                 # 股东简称       B-SHS I-SHS   ---key 股东全称, 股东简称 二选一
@@ -482,15 +541,29 @@ def generate_training_set(source_path, dest_path):
                 # 变动数量       B-AMT I-AMT
                 # 变动后持股数    B-CHT I-CHT
                 # 变动后持股比例   B-CPS I-CPS
-                if tag_line.find('B-SHL') != -1 or tag_line.find('B-SHS') != -1:
-                    if tag_line.find('B-CHD') != -1:
-                        # this line contains all the keys, and it should be included in the training set.
+                if 'B-SHL' in tag_line or 'B-SHS' in tag_line:
+                    if 'B-CHD' in tag_line:
+                        # scenario 1: this line contains all the keys, and it should be included in the training set.
                         # because '。' doesn't take into account, so the end_pos should increase by 1.
-                        pair_list = tagged_content_pair.pair_list[start_pos:end_pos + 1]
-                        # TODO: write content.
+                        has_valid_tag = True
+                elif 'B-SHL' in tag_line\
+                        or 'B-SHS' in tag_line\
+                        or 'B-CHD' in tag_line:
+                    if 'B-PRC' in tag_line \
+                            or 'B-AMT' in tag_line \
+                            or 'B-CHT' in tag_line \
+                            or 'B-CPS' in tag_line:
+                        # scenario 2: this line part of the keys as well as other attributes
+                        has_valid_tag = True
 
-                start_pos += line_length + 1  # because '。' doesn't take into account.
+                    pair_list = tagged_content_pair.pair_list[start_pos:end_pos]
+                    for pair in pair_list:
+                        if not has_valid_tag:
+                            pair[1] = 'O'   # reset to O
+                        tmp_str = '\t'.join(pair)
+                        print(tmp_str, file=f)
 
+                start_pos = end_pos
 
 # def batch_pre_process(data_home_path):
 #     for id_html in os.listdir(data_home_path):
@@ -519,8 +592,10 @@ data_source_zjc = 'C:\\project\\AI\\project_info_extract\\data\\FDDC_announcemen
 #                                   '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
 
 # for testing purpose only
+# training_reference_results_file = 'C:\\project\\AI\\project_info_extract\\data\\output\\test_source\\bug.txt'
 training_reference_results_file = 'C:\\project\\AI\\project_info_extract\\data\\' \
                                   '[new] FDDC_announcements_round1_train_result_20180616\\zengjianchi.train'
+
 tag_output_path = 'C:\\project\\AI\\project_info_extract\\data\\output'
 process_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\process.log'
 error_log_file = 'C:\\project\\AI\\project_info_extract\\data\\log\\error.log'
@@ -535,9 +610,11 @@ if __name__ == '__main__':
     # tmp_str = proc.remove_html_tags(tmp_str)
     # print(tmp_str)
 
-    process_reverse_tagging(training_reference_results_file, data_source_zjc,
-                            tag_output_path, process_log_file, error_log_file)
+    # process_reverse_tagging(training_reference_results_file, data_source_zjc,
+    #                         tag_output_path, process_log_file, error_log_file)
 
+    generate_training_set(raw_tag_source_folder, training_set_output_folder)
+    #
     # original_str = 'a  a 我我我  我我  我   我   sf   ssf我我  我   我   sf我我  我   我   sf我我  我   我   sf'
     # original_str = '<tr><td>增持主体</td><td>增持时间</td><td>增持方式</td><td>增持股数             (股)</td><td>增持均价(元             /股)'
     # original_str += '自 2018 年 2 月 2 日起持续通过上'
