@@ -35,7 +35,7 @@ class TableInfoExtractor:
         self.similarity_threshold = similarity_threshold
         self.word_vec_model = word_vec_model
         self.dataframes = list()
-        # self.parse()  # for testing purpose only: to many errors in the html tables. skip the table processing first.
+        self.parse()  # for testing purpose only: to many errors in the html tables. skip the table processing first.
 
     def parse(self):
         soup_obj = BeautifulSoup(self.html_str, "html.parser")
@@ -73,7 +73,7 @@ class TableInfoExtractor:
     def has_valid_dataframe(self):
         flag = False
         for df in self.dataframes:
-            if self.is_a_valid_form(df):
+            if self.is_a_valid_dataframe(df):
                 flag = True
                 break
         return flag
@@ -197,14 +197,14 @@ class TableInfoExtractor:
 
 # for testing purpose only
 def test_dataframe():
-    # test_html = 'C:/project/AI/project_info_extract/data/FDDC_announcements_round1_train_data/增减持/html/11586.html'
-    test_html = 'C:/project/AI/project_info_extract/data/FDDC_announcements_round1_train_data/增减持/html/20536430.html'
+    test_html = 'C:/project/AI/project_info_extract/data/FDDC_announcements_round1_train_data/增减持/html/11586.html'
+    # test_html = 'C:/project/AI/project_info_extract/data/FDDC_announcements_round1_train_data/增减持/html/20536430.html'
     html_str = ''
     with codecs.open(test_html, mode='r', encoding='utf-8') as f:
         for line in f:
             html_str += line
     table_processor = TableInfoExtractor(html_str, model)
-    print(table_processor.has_valid_form())
+    print(table_processor.has_valid_dataframe())
 
 source_word_vec_path = 'C:\\project\\AI\\data\\fasttext.cc.zh.300.vec'
 dest_character_vec_path = 'C:\\project\\AI\\data\\chinese_character_vec_1.txt'
@@ -271,7 +271,10 @@ def get_character_vector(source_path, dest_path):
 # target = '你在干啥'
 #
 # for str1 in strings:
-#     print(str1, get_term_similarity(str1, target, model, is_character_based=False))
+#     print(str1, get_term_similarity(str1, target, model, is_character_based=True))
+
+# get_term_similarity('变动后持股数', '本次减持后持有股份股数(股)', model)
+# get_term_similarity('变动后持股数', '本次减持前持有股份股数(股)', model)
 
 # fasttext character based testing results:
 # 你在干什么 0.9016322132672677
@@ -288,5 +291,5 @@ def get_character_vector(source_path, dest_path):
 # 我喜欢吃香蕉 0.624095035853279
 
 
-# if __name__ == '__main__':
-#     test_dataframe()
+if __name__ == '__main__':
+    test_dataframe()

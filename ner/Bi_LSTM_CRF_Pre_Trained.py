@@ -2,19 +2,38 @@ import torch
 import torch.autograd as autograd
 import torch.nn as nn
 import torch.optim as optim
+import os
+from sklearn.model_selection import train_test_split
+import gensim
+
+from preprocessing.Reverse_Tagging import ContentTagPair
+
 
 torch.manual_seed(1)
 
 START_TAG = "<START>"
 STOP_TAG = "<STOP>"
-EMBEDDING_DIM = 5
-HIDDEN_DIM = 4
+# EMBEDDING_DIM = 5
+HIDDEN_DIM = 50    # not sure how to determine this figure???
 
 
 def argmax(vec):
     # return the argmax as a python int
     _, idx = torch.max(vec, 1)
     return idx.item()
+
+
+def prepare_sequence_with_pre_trained(seq, char_vec):
+    # based on pre trained word vector such as fasttext.
+    # I manually added a UNK zero vector into the fasttext vector for rare characters.
+    idxs = list()
+    for c in seq:
+        if c in char_vec.vocab:
+            idxs.append(model.vocab[c].index)
+        else:
+            # for all of the rare characters, replace with 'UNK'
+            idxs.append(model.vocab['UNK'].index)
+    return torch.tensor(idxs, dtype=torch.long)
 
 
 def prepare_sequence(seq, to_ix):
@@ -32,15 +51,19 @@ def log_sum_exp(vec):
 
 class BiLSTM_CRF(nn.Module):
 
-    def __init__(self, vocab_size, tag_to_ix, embedding_dim, hidden_dim):
+    def __init__(self, tag_to_ix, hidden_dim, character_vector):
+        # deleted parameters: vocab_size, embedding_dim
         super(BiLSTM_CRF, self).__init__()
-        self.embedding_dim = embedding_dim
+        # self.embedding_dim = embedding_dim
+        self.embedding_dim = 300  # hard coded, since using the pre-trained word vectors.
         self.hidden_dim = hidden_dim
-        self.vocab_size = vocab_size
+        # self.vocab_size = vocab_size
         self.tag_to_ix = tag_to_ix
         self.tagset_size = len(tag_to_ix)
 
-        self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
+        # self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
+        pre_trained_word_vectors = torch.FloatTensor(character_vector.vectors)
+        self.word_embeds = nn.Embedding.from_pretrained(pre_trained_word_vectors)
         self.lstm = nn.LSTM(embedding_dim, hidden_dim // 2,
                             num_layers=1, bidirectional=True)
 
@@ -174,26 +197,54 @@ class BiLSTM_CRF(nn.Module):
 ###Run training
 
 # Make up some training data
-training_data = [(
-    "the wall street journal reported today that apple corporation made money".split(),
-    "B I I I O O O B I O O".split()
-), (
-    "georgia tech is a university in georgia".split(),
-    "B I O O O O B".split()
-)]
+# training_data = [(
+#     "the wall street journal reported today that apple corporation made money".split(),
+#     "B I I I O O O B I O O".split()
+# ), (
+#     "georgia tech is a university in georgia".split(),
+#     "B I O O O O B".split()
+# )]
+#
+# word_to_ix = {}
+# for sentence, tags in training_data:
+#     for word in sentence:
+#         if word not in word_to_ix:
+#             word_to_ix[word] = len(word_to_ix)
 
-word_to_ix = {}
-for sentence, tags in training_data:
-    for word in sentence:
-        if word not in word_to_ix:
-            word_to_ix[word] = len(word_to_ix)
+# load training data
 
-tag_to_ix = {"B": 0, "I": 1, "O": 2, START_TAG: 3, STOP_TAG: 4}
+training_set_sparse_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\training_set_sparse'
+training_data_file = os.listdir(training_set_sparse_folder)
+X_train, X_test, y_train, y_test = train_test_split(training_data_file, training_data_file, test_size=0.1, random_state=0)
 
-model = BiLSTM_CRF(len(word_to_ix), tag_to_ix, EMBEDDING_DIM, HIDDEN_DIM)
+# tag_to_ix = {"B": 0, "I": 1, "O": 2, START_TAG: 3, STOP_TAG: 4}
+tag_to_ix = {
+    'B-SHL': 0, 'I-SHL': 1,
+    'B-SHS': 2, 'I-SHS': 3,
+    'B-CHD': 4, 'I-CHD': 5,
+    'B-PRC': 6, 'I-PRC': 7,
+    'B-AMT': 8, 'I-AMT': 9,
+    'B-CHT': 10, 'I-CHT': 11,
+    'B-CPS': 12, 'I-CPS': 13,
+    START_TAG: 14, STOP_TAG: 15
+}
+        # 股东全称        I-SHL    tag type = SHL
+        # 股东简称       B- I-SHS
+        # 变动截止日期    B- I-CHD
+        # 变动价格       B- I-PRC
+        # 变动数量       B- I-AMT
+        # 变动后持股数    B- I-CHT
+        # 变动后持股比例   B- I-CPS
+
+cn_char_vec_file = 'C:\\project\\AI\\data\\chinese_character_vec_1.txt'
+cn_char_vec = gensim.models.KeyedVectors.load_word2vec_format(cn_char_vec_file, binary=False, encoding='utf-8')
+
+model = BiLSTM_CRF(tag_to_ix, HIDDEN_DIM, cn_char_vec)  # tag_to_ix, hidden_dim, character_vector
 optimizer = optim.SGD(model.parameters(), lr=0.01, weight_decay=1e-4)
 
 # Check predictions before training
+# simple test
+simple_sample = ''
 with torch.no_grad():
     precheck_sent = prepare_sequence(training_data[0][0], word_to_ix)
     precheck_tags = torch.tensor([tag_to_ix[t] for t in training_data[0][1]], dtype=torch.long)
@@ -201,19 +252,25 @@ with torch.no_grad():
 
 # Make sure prepare_sequence from earlier in the LSTM section is loaded
 for epoch in range(
-        300):  # again, normally you would NOT do 300 epochs, it is toy data
-
+        10):  # again, normally you would NOT do 300 epochs, it is toy data
     # ZL: for stochastic gradient descent, the out loop usually
     # set from 1 to 10. if you have a very large training sample
     # you may use small number!!!
-    for sentence, tags in training_data:
-        # Step 1. Remember that Pytorch accumulates gradients.
-        # We need to clear them out before each instance
-        model.zero_grad()
 
-        # Step 2. Get our inputs ready for the network, that is,
-        # turn them into Tensors of word indices.
-        sentence_in = prepare_sequence(sentence, word_to_ix)
+    for tag_file in X_train:
+        file_path = os.path.join(training_set_sparse_folder, tag_file)
+        tagged_content_pair = ContentTagPair.load_from_file(file_path)
+        sentence = tagged_content_pair.content_string
+        tags = tagged_content_pair.pair_list
+        sentence_in = prepare_sequence_with_pre_trained(sentence, cn_char_vec)
+    # for sentence, tags in training_data:
+    #     # Step 1. Remember that Pytorch accumulates gradients.
+    #     # We need to clear them out before each instance
+    #     model.zero_grad()
+    #
+    #     # Step 2. Get our inputs ready for the network, that is,
+    #     # turn them into Tensors of word indices.
+    #     sentence_in = prepare_sequence(sentence, word_to_ix)
         targets = torch.tensor([tag_to_ix[t] for t in tags], dtype=torch.long)
 
         # Step 3. Run our forward pass.
@@ -231,4 +288,27 @@ with torch.no_grad():
 # We got it!
 
 
+def character_is_in_pre_trained_model(char_vec_model, training_data_path):
+    errors = list()
+    for tag_file in os.listdir(training_data_path):
+        in_file_path = os.path.join(training_data_path, tag_file)
+        tagged_content_pair = ContentTagPair.load_from_file(in_file_path)
+        for char_chinese in tagged_content_pair.content_string:
+            try:
+                char_vec_model.vocab[char_chinese].index
+            except:
+                print(char_chinese + ' is not in the vocabulary : ' + tag_file)
+                if tag_file not in errors:
+                    errors.append(tag_file)
+    return errors
+
+
+
+# TODO: save the trained model and load it from disk next time.
+
+
 # TODO: should use cross validation
+
+# word = "whatever"  # for any word in model
+# i = model.vocab[word].index
+# model.index2word[i] == word  # will be true

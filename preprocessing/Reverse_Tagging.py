@@ -462,8 +462,9 @@ def process_reverse_tagging(training_results_file_path, training_data_source_pat
 
 
 raw_tag_source_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\content_without_html_tag'
-# raw_tag_source_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\test'
-training_set_output_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\training_set'
+# raw_tag_source_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\test_content'
+training_set_output_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\training_set_sparse'
+# training_set_output_folder = 'C:\\project\\AI\\project_info_extract\\data\\output\\test_dest'
 
 
 def generate_training_set_dense(source_path, dest_path):
@@ -516,7 +517,6 @@ def generate_training_set_dense(source_path, dest_path):
 
 def generate_training_set_sparse(source_path, dest_path):
     # to keep all 'O' sentences
-    # TODO: test this part
     for tag_file in os.listdir(source_path):
         print('processing ' + tag_file + '...')
         in_file_path = os.path.join(source_path, tag_file)
@@ -556,12 +556,12 @@ def generate_training_set_sparse(source_path, dest_path):
                         # scenario 2: this line part of the keys as well as other attributes
                         has_valid_tag = True
 
-                    pair_list = tagged_content_pair.pair_list[start_pos:end_pos]
-                    for pair in pair_list:
-                        if not has_valid_tag:
-                            pair[1] = 'O'   # reset to O
-                        tmp_str = '\t'.join(pair)
-                        print(tmp_str, file=f)
+                pair_list = tagged_content_pair.pair_list[start_pos:end_pos]
+                for pair in pair_list:
+                    if not has_valid_tag:
+                        pair[1] = 'O'   # reset to O
+                    tmp_str = '\t'.join(pair)
+                    print(tmp_str, file=f)
 
                 start_pos = end_pos
 
@@ -613,7 +613,8 @@ if __name__ == '__main__':
     # process_reverse_tagging(training_reference_results_file, data_source_zjc,
     #                         tag_output_path, process_log_file, error_log_file)
 
-    generate_training_set(raw_tag_source_folder, training_set_output_folder)
+    # generate_training_set_dense(raw_tag_source_folder, training_set_output_folder)
+    generate_training_set_sparse(raw_tag_source_folder, training_set_output_folder)
     #
     # original_str = 'a  a 我我我  我我  我   我   sf   ssf我我  我   我   sf我我  我   我   sf我我  我   我   sf'
     # original_str = '<tr><td>增持主体</td><td>增持时间</td><td>增持方式</td><td>增持股数             (股)</td><td>增持均价(元             /股)'
